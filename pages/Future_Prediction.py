@@ -1,195 +1,208 @@
 import streamlit as st
 import pandas as pd
 from prophet import Prophet
-import plotly.express as px
-import speech_recognition as sr
-import pyttsx3
+import plotly.graph_objects as go
 
-# Load the data (Ensure the file path is correct)
-data = pd.read_excel("pages/hyperlocal_demand_forecasting_with_grocery_items.xlsx")
+# Try to import voice libraries (optional)
+try:
+    import speech_recognition as sr
+    VOICE_INPUT_AVAILABLE = True
+except ImportError:
+    VOICE_INPUT_AVAILABLE = False
+    
+try:
+    import pyttsx3
+    VOICE_OUTPUT_AVAILABLE = True
+except ImportError:
+    VOICE_OUTPUT_AVAILABLE = False
 
-# Data preprocessing
+# Load your data (ensure the file path is correct)
+data = pd.read_excel('pages/hyperlocal_demand_forecasting_with_grocery_items.xlsx')
+
+# Convert 'Month' to datetime
 data['Month'] = pd.to_datetime(data['Month'])
-data['Product Name'] = data['Product Name'].astype(str)
-data = data.sort_values('Month')
 
-# Define seasons/festivals with corresponding months
-seasons = {
-    "None": [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
-    ],
-    "Diwali": ["October", "November"],
-    "Christmas": ["December"],
-    "Summer": ["April", "May", "June"],
-    "Monsoon": ["July", "August", "September"],
-    "New Year": ["January"]
-}
+# Create a list of months sorted correctly
+months_list = ['January', 'February', 'March', 'April', 'May', 'June', 
+               'July', 'August', 'September', 'October', 'November', 'December']
 
-months_list = list(seasons["None"])  # Create a list of months for validation
+st.title("🔮 Future Demand Prediction")
+st.markdown("Use AI-powered forecasting to predict future product demand")
 
-# Sidebar selection for product, season/festival, and specific month
-st.sidebar.title("Product Demand Forecasting")
-selected_product = st.sidebar.selectbox("Select a product", data['Product Name'].unique())
-selected_season = st.sidebar.selectbox("Select a season or festival", list(seasons.keys()))
-selected_month = st.sidebar.selectbox("Select a month", seasons[selected_season])
+# Voice input section (only if available)
+if VOICE_INPUT_AVAILABLE:
+    st.subheader("🎙️ Voice Input (Optional)")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🎤 Speak Product & Month"):
+            try:
+                recognizer = sr.Recognizer()
+                with sr.Microphone() as source:
+                    st.info("Listening... Please say product name and month (e.g., 'Tomato January')")
+                    audio = recognizer.listen(source, timeout=5)
+                    text = recognizer.recognize_google(audio)
+                    st.success(f"You said: {text}")
+                    
+                    # Try to parse the input
+                    words = text.lower().split()
+                    detected_product = None
+                    detected_month = None
+                    
+                    for word in words:
+                        # Check for product
+                        for product in data['Product Name'].unique():
+                            if word in product.lower():
+                                detected_product = product
+                                break
+                        # Check for month
+                        for month in months_list:
+                            if word in month.lower():
+                                detected_month = month
+                                break
+                    
+                    if detected_product and detected_month:
+                        st.session_state['voice_product'] = detected_product
+                        st.session_state['voice_month'] = detected_month
+                        
+            except Exception as e:
+                st.error(f"Error with voice input: {str(e)}")
+else:
+    st.info("💡 Voice input is not available. Install PyAudio and SpeechRecognition for voice features.")
+
+# Manual selection
+st.subheader("📊 Manual Selection")
+
+# Use voice input if available, otherwise use default
+default_product = st.session_state.get('voice_product', data['Product Name'].unique()[0])
+default_month_idx = months_list.index(st.session_state.get('voice_month', 'January')) if st.session_state.get('voice_month') in months_list else 0
+
+selected_product = st.selectbox("Select Product", data['Product Name'].unique(), 
+                                index=list(data['Product Name'].unique()).index(default_product) if default_product in data['Product Name'].unique() else 0)
+selected_month = st.selectbox("Select Month for Prediction", months_list, index=default_month_idx)
 
 # Filter data for the selected product
-product_data = data[data['Product Name'] == selected_product]
-product_data = product_data[['Month', 'Monthly_Sales']].rename(columns={'Month': 'ds', 'Monthly_Sales': 'y'})
+product_data = data[data['Product Name'] == selected_product].copy()
 
-# Ensure no NaN values in product_data
-product_data.dropna(inplace=True)
-
-# Build the forecasting model
-model = Prophet(growth='linear')  # Use linear growth
-model.fit(product_data)
-future = model.make_future_dataframe(periods=12, freq='MS')  # Predict for next 12 months
-forecast = model.predict(future)
-
-# Clip the predictions to ensure no negative values
-forecast['yhat'] = forecast['yhat'].clip(lower=0).round().astype(int)
-forecast['yhat_lower'] = forecast['yhat_lower'].clip(lower=0).round().astype(int)
-forecast['yhat_upper'] = forecast['yhat_upper'].clip(lower=0).round().astype(int)
-
-# Separate past data and forecasted data
-historical_data = product_data.copy()
-forecast_data = forecast[forecast['ds'] > product_data['ds'].max()]  # Only future months
-
-# Add a 'Month' column with month names for easier season and month filtering
-forecast_data['Month'] = forecast_data['ds'].dt.strftime('%B')
-forecast_data['Year'] = forecast_data['ds'].dt.year
-
-# Filter forecast data based on selected season and month
-if selected_season != "None":
-    season_months = seasons[selected_season]
-    season_forecast_data = forecast_data[forecast_data['Month'].isin(season_months)]
-else:
-    season_forecast_data = forecast_data  # Show all months when "None" is selected
-
-# Further filter by the selected month if applicable
-selected_month_forecast_data = season_forecast_data[season_forecast_data['Month'] == selected_month]
-
-# Layout setup
-st.title("📈 Product Demand Forecasting")
-st.write(f"This app presents a forecast of future demand for {selected_product}.")
-
-# Voice input and response
-def recognize_speech():
-    r = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.sidebar.write("Say the product name followed by the month you want to predict the sales for...")
-        audio = r.listen(source)
-    try:
-        text = r.recognize_google(audio)
-        st.write("You said: " + text)
-        return text
-    except sr.UnknownValueError:
-        st.sidebar.write("Sorry, I could not understand the audio.")
-        return None
-    except sr.RequestError:
-        st.sidebar.write("Could not request results.")
-        return None
-
-def respond(prediction):
-    engine = pyttsx3.init()
-    engine.say(f"The predicted sales for {selected_product} in {selected_month} are {prediction}")
-    engine.runAndWait()
-
-# Voice control - Place the button in the sidebar for left alignment
-if st.sidebar.button("Click to speak", key="speak_button"):
-    text = recognize_speech()
-    if text:
-        words = text.split()
-        if len(words) < 2:
-            st.sidebar.write("Please provide both a product name and a month.")
-        else:
-            # Extracting the product name and month
-            month_mentioned = words[-1]  # Last word as month
-            product_mentioned = ' '.join(words[:-1])  # All but the last word as product
-            
-            # Update product selection if the recognized product is valid
-            if product_mentioned in data['Product Name'].unique():
-                selected_product = product_mentioned
-                # Update the sidebar selection
-                st.sidebar.selectbox("Select a product", data['Product Name'].unique(), index=list(data['Product Name'].unique()).index(selected_product))
-
-            # Update month selection if the recognized month is valid
-            if month_mentioned in months_list:
-                selected_month = month_mentioned
-                # Update the sidebar selection
-                st.sidebar.selectbox("Select a month", months_list, index=months_list.index(selected_month))
-            else:
-                st.sidebar.write(f"Month '{month_mentioned}' not recognized. Please try again.")
-            
-            # Re-fetch the forecast data based on the updated selection
-            selected_month_forecast_data = season_forecast_data[season_forecast_data['Month'] == selected_month]
-            
-            # Update the metrics display
-            if not selected_month_forecast_data.empty:
-                selected_month_prediction = selected_month_forecast_data['yhat'].iloc[0]
-                respond(selected_month_prediction)  # Announce the prediction
-            else:
-                st.write(f"No forecast data available for the product: {selected_product} and month: {selected_month}.")
-
-# Show metrics for selected season and month
-if not selected_month_forecast_data.empty:
-    selected_month_prediction = selected_month_forecast_data['yhat'].iloc[0]
-    selected_lower = selected_month_forecast_data['yhat_lower'].iloc[0]
-    selected_upper = selected_month_forecast_data['yhat_upper'].iloc[0]
+if not product_data.empty:
+    # Prepare data for Prophet
+    df = product_data[['Month', 'Monthly_Sales']].rename(columns={'Month': 'ds', 'Monthly_Sales': 'y'})
     
-    st.subheader(f"Predicted Demand for {selected_product} - {selected_season} ({selected_month})")
+    # Fit the Prophet model
+    model = Prophet()
+    model.fit(df)
+    
+    # Create future dataframe for prediction
+    future = model.make_future_dataframe(periods=12, freq='M')
+    forecast = model.predict(future)
+    
+    # Get the prediction for the selected month
+    month_num = months_list.index(selected_month) + 1
+    current_year = pd.Timestamp.now().year
+    target_date = pd.Timestamp(year=current_year, month=month_num, day=1)
+    
+    # Find the closest prediction
+    forecast['date_diff'] = abs(forecast['ds'] - target_date)
+    closest_prediction = forecast.loc[forecast['date_diff'].idxmin()]
+    
+    predicted_value = closest_prediction['yhat']
+    lower_bound = closest_prediction['yhat_lower']
+    upper_bound = closest_prediction['yhat_upper']
+    
+    # Display prediction results
+    st.subheader(f"📈 Prediction Results for {selected_product} in {selected_month}")
+    
     col1, col2, col3 = st.columns(3)
-    col1.metric("Prediction", f"{selected_month_prediction}")
-    col2.metric("Lower Estimate", f"{selected_lower}")
-    col3.metric("Upper Estimate", f"{selected_upper}")
+    with col1:
+        st.metric("Predicted Sales", f"{int(predicted_value):,}")
+    with col2:
+        st.metric("Lower Bound", f"{int(lower_bound):,}")
+    with col3:
+        st.metric("Upper Bound", f"{int(upper_bound):,}")
+    
+    # Confidence interval
+    confidence = ((upper_bound - lower_bound) / predicted_value) * 100
+    st.info(f"Confidence Interval: ±{confidence:.1f}%")
+    
+    # Voice output (only if available)
+    if VOICE_OUTPUT_AVAILABLE:
+        if st.button("🔊 Speak Prediction"):
+            try:
+                engine = pyttsx3.init()
+                text = f"The predicted sales for {selected_product} in {selected_month} is {int(predicted_value)} units"
+                engine.say(text)
+                engine.runAndWait()
+            except Exception as e:
+                st.error(f"Error with voice output: {str(e)}")
+    
+    # Plot historical data and forecast
+    st.subheader("📊 Historical Data and Forecast")
+    
+    fig = go.Figure()
+    
+    # Historical data
+    fig.add_trace(go.Scatter(
+        x=df['ds'], 
+        y=df['y'],
+        mode='lines+markers',
+        name='Historical Sales',
+        line=dict(color='blue', width=2)
+    ))
+    
+    # Forecast
+    fig.add_trace(go.Scatter(
+        x=forecast['ds'], 
+        y=forecast['yhat'],
+        mode='lines',
+        name='Forecast',
+        line=dict(color='red', width=2, dash='dash')
+    ))
+    
+    # Confidence interval
+    fig.add_trace(go.Scatter(
+        x=forecast['ds'].tolist() + forecast['ds'].tolist()[::-1],
+        y=forecast['yhat_upper'].tolist() + forecast['yhat_lower'].tolist()[::-1],
+        fill='toself',
+        fillcolor='rgba(255,0,0,0.2)',
+        line=dict(color='rgba(255,255,255,0)'),
+        name='Confidence Interval'
+    ))
+    
+    fig.update_layout(
+        title=f'Sales Forecast for {selected_product}',
+        xaxis_title='Date',
+        yaxis_title='Sales',
+        hovermode='x unified'
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Additional insights
+    st.subheader("💡 Insights")
+    
+    # Calculate trend
+    recent_avg = df['y'].tail(3).mean()
+    if predicted_value > recent_avg:
+        trend = "📈 Increasing"
+        trend_pct = ((predicted_value - recent_avg) / recent_avg) * 100
+    else:
+        trend = "📉 Decreasing"
+        trend_pct = ((recent_avg - predicted_value) / recent_avg) * 100
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Trend", trend, f"{trend_pct:.1f}%")
+    with col2:
+        st.metric("Recent Average", f"{int(recent_avg):,}")
+    
+    # Recommendations
+    st.subheader("💼 Recommendations")
+    if predicted_value > recent_avg * 1.2:
+        st.success("🔼 High demand expected! Consider increasing inventory.")
+    elif predicted_value < recent_avg * 0.8:
+        st.warning("🔽 Lower demand expected. Adjust inventory accordingly.")
+    else:
+        st.info("➡️ Stable demand expected. Maintain current inventory levels.")
+
 else:
-    st.write(f"No forecast data available for the selected season: {selected_season} and month: {selected_month}.")
-
-# Visualize past and predicted future sales for the selected season and month
-st.subheader(f"Past Sales vs. Forecasted Demand during {selected_season} ({selected_month})")
-
-# Line chart for past sales and predictions for the season and specific month
-fig_line = px.line(
-    x=pd.concat([historical_data['ds'], season_forecast_data['ds']]),
-    y=pd.concat([historical_data['y'], season_forecast_data['yhat']]),
-    labels={'x': 'Month', 'y': 'Sales'},
-    title=f"Past Sales and Forecasted Demand for {selected_product} during {selected_season} ({selected_month})"
-)
-fig_line.add_scatter(
-    x=season_forecast_data['ds'],
-    y=season_forecast_data['yhat'],
-    mode="lines",
-    name="Predicted",
-    line=dict(dash="dash")
-)
-st.plotly_chart(fig_line)
-
-# Display the forecast table for the selected season and month
-st.subheader(f"Predicted Future Demand for {selected_product} ({selected_season} - {selected_month})")
-selected_month_forecast_table = selected_month_forecast_data[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].rename(
-    columns={'ds': 'Date', 'yhat': 'Predicted Sales', 'yhat_lower': 'Lower Estimate', 'yhat_upper': 'Upper Estimate'}
-)
-selected_month_forecast_table['Predicted Sales'] = selected_month_forecast_table['Predicted Sales'].astype(int)
-selected_month_forecast_table['Lower Estimate'] = selected_month_forecast_table['Lower Estimate'].astype(int)
-selected_month_forecast_table['Upper Estimate'] = selected_month_forecast_table['Upper Estimate'].astype(int)
-st.dataframe(selected_month_forecast_table)
-
-# Summary of predictions
-st.write(
-    f"The above tables and charts provide a visual representation of the past sales and predicted future demand for "
-    f"{selected_product} during {selected_season} in {selected_month}. This information can guide stock levels and ordering needs."
-)
-
-# Additional visualizations
-
-# Pie chart for sales distribution by month (last year's sales)
-last_year_data = data[data['Month'].dt.year == data['Month'].dt.year.max()]
-
-fig_pie = px.pie(
-    last_year_data,
-    names='Month',
-    values='Monthly_Sales',
-    title=f"Sales Distribution for {selected_product} in Last Year"
-)
-st.plotly_chart(fig_pie)
+    st.error(f"No data available for {selected_product}")
