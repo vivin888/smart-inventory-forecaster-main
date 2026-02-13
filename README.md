@@ -7,7 +7,6 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Prophet](https://img.shields.io/badge/Prophet-Forecasting-00D9FF?style=for-the-badge)](https://facebook.github.io/prophet/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **An intelligent demand forecasting system for hyperlocal delivery services**  
 *Powered by Facebook Prophet | Voice-Enabled | Real-time Analytics*
@@ -225,63 +224,3 @@ pip install pyaudio
 - Voice features work without PyAudio (shows info message)
 
 ---
-
-## 🚀 Features Roadmap
-
-- [x] AI-powered forecasting with Prophet
-- [x] Voice input/output
-- [x] Interactive visualizations
-- [x] Multi-page navigation
-- [x] Confidence intervals
-- [x] Trend analysis
-- [ ] Docker containerization
-- [ ] API endpoints
-- [ ] Multi-language support
-- [ ] Mobile app
-- [ ] Real-time data integration
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 👨‍💻 Author
-
-**Vivin Rakul**
-
-[![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Vivin888)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://linkedin.com/in/yourprofile)
-
----
-
-## 🙏 Acknowledgments
-
-- **Facebook Prophet** - Time series forecasting
-- **Streamlit** - Web application framework
-- **Plotly** - Interactive visualizations
-- **Python Community** - Amazing libraries and support
-
----
-
-<div align="center">
-
-### ⭐ Star this repo if you find it helpful!
-
-**Made with ❤️ and Python**
-
-</div>
